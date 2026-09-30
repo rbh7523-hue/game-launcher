@@ -1,0 +1,26 @@
+name: Build APK
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Create project and build
+        run: |
+          flutter create --org com.example --project-name game_launcher --platforms=android app
+          cp main.dart app/lib/main.dart
+          cp MainActivity.txt app/android/app/src/main/kotlin/com/example/game_launcher/MainActivity.kt
+          sed -i 's#<application#<uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES"/>\n    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>\n    <application#' app/android/app/src/main/AndroidManifest.xml
+          cd app
+          flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game-launcher-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk

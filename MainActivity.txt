@@ -1,0 +1,104 @@
+package com.example.game_launcher
+
+import android.app.ActivityManager
+import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.Drawable
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
+
+class MainActivity : FlutterActivity() {
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "game_launcher/native")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getGames" -> Thread {
+                        val games = getGames()
+                        Handler(Looper.getMainLooper()).post { result.success(games) }
+                    }.start()
+                    "boost" -> {
+                        val keep = call.argument<String>("keep") ?: ""
+                        Thread {
+                            val r = boost(keep)
+                            Handler(Looper.getMainLooper()).post { result.success(r) }
+                        }.start()
+                    }
+                    "getUserApps" -> Thread {
+                        val apps = getUserApps()
+                        Handler(Looper.getMainLooper()).post { result.success(apps) }
+                    }.start()
+                    "getExcluded" -> result.success(excluded().toList())
+                    "setExcluded" -> {
+                        val list = call.argument<List<String>>("packages") ?: emptyList()
+                        prefs().edit().putStringSet("excluded", list.toSet()).apply()
+                        result.success(null)
+                    }
+                    "launch" -> {
+                        val pkg = call.argument<String>("package")!!
+                        packageManager.getLaunchIntentForPackage(pkg)?.let { startActivity(it) }
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun prefs() = getSharedPreferences("launcher", Context.MODE_PRIVATE)
+    private fun excluded(): Set<String> = prefs().getStringSet("excluded", emptySet()) ?: emptySet()
+
+    private fun getUserApps(): List<Map<String, Any>> {
+        val pm = packageManager
+        return pm.getInstalledApplications(0)
+            .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 && it.packageName != packageName }
+            .map { mapOf("name" to pm.getApplicationLabel(it).toString(), "package" to it.packageName, "icon" to png(pm.getApplicationIcon(it), 96)) }
+            .sortedBy { (it["name"] as String).lowercase() }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isGame(a: ApplicationInfo): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && a.category == ApplicationInfo.CATEGORY_GAME) return true
+        return (a.flags and ApplicationInfo.FLAG_IS_GAME) != 0
+    }
+
+    private fun getGames(): List<Map<String, Any>> {
+        val pm = packageManager
+        return pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            .filter { isGame(it) && it.packageName != packageName && pm.getLaunchIntentForPackage(it.packageName) != null }
+            .map { mapOf("name" to pm.getApplicationLabel(it).toString(), "package" to it.packageName, "icon" to png(pm.getApplicationIcon(it))) }
+            .sortedBy { (it["name"] as String).lowercase() }
+    }
+
+    private fun png(d: Drawable, size: Int = 192): ByteArray {
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        d.setBounds(0, 0, size, size); d.draw(Canvas(bmp))
+        val s = ByteArrayOutputStream(); bmp.compress(Bitmap.CompressFormat.PNG, 100, s)
+        return s.toByteArray()
+    }
+
+    private fun availMb(am: ActivityManager): Double {
+        val mi = ActivityManager.MemoryInfo(); am.getMemoryInfo(mi); return mi.availMem / 1048576.0
+    }
+
+    private fun boost(keep: String): Map<String, Any> {
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val before = availMb(am)
+        var closed = 0
+        val skip = excluded()
+        for (a in packageManager.getInstalledApplications(0)) {
+            if (a.packageName == packageName || a.packageName == keep || a.packageName in skip) continue
+            if ((a.flags and ApplicationInfo.FLAG_SYSTEM) != 0) continue
+            am.killBackgroundProcesses(a.packageName); closed++
+        }
+        Thread.sleep(400)
+        return mapOf("closed" to closed, "freedMb" to maxOf(0.0, availMb(am) - before))
+    }
+}

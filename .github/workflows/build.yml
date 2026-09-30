@@ -17,8 +17,9 @@ jobs:
           flutter create --org com.example --project-name game_launcher --platforms=android app
           cp main.dart app/lib/main.dart
           cp MainActivity.txt app/android/app/src/main/kotlin/com/example/game_launcher/MainActivity.kt
-          sed -i 's#<application#<uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES"/>\n    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>\n    <application#' app/android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES"/>\n    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>\n    <application#' app/android/app/src/main/AndroidManifest.xml
           cd app
+          flutter pub add http image_picker shared_preferences path_provider
           flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:

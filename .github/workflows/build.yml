@@ -18,8 +18,16 @@ jobs:
           cp main.dart app/lib/main.dart
           cp MainActivity.txt app/android/app/src/main/kotlin/com/example/game_launcher/MainActivity.kt
           sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES"/>\n    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>\n    <application#' app/android/app/src/main/AndroidManifest.xml
+          sed -i 's#android:label="game_launcher"#android:label="Gaming Mode"#' app/android/app/src/main/AndroidManifest.xml
           cd app
           flutter pub add http image_picker shared_preferences path_provider
+          if [ -f ../icon.png ]; then
+            mkdir -p assets
+            cp ../icon.png assets/icon.png
+            flutter pub add --dev flutter_launcher_icons
+            printf '\nflutter_launcher_icons:\n  android: true\n  ios: false\n  image_path: "assets/icon.png"\n' >> pubspec.yaml
+            dart run flutter_launcher_icons
+          fi
           flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:
